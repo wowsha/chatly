@@ -42,6 +42,8 @@
     const chatDiv = document.getElementById('chat');
     const input = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
+    const importOfferFile = document.getElementById('importOfferFile');
+    const importAnswerFile = document.getElementById('importAnswerFile');
 
     function appendMessage(text, self=false) {
       const msg = document.createElement('div');
@@ -83,42 +85,42 @@
       await pc.setLocalDescription(answer);
     };
 
-    // Handle ICE completion for both offer and answer
+    // Handle ICE completion
     pc.onicecandidate = e => {
-      if (e.candidate === null) {
-        const desc = pc.localDescription;
-        const type = desc.type;
-        downloadChat({ type, sdp: desc.sdp });
-        if (type === 'offer') {
-          document.getElementById('genOffer').classList.add('hidden');
-          document.getElementById('importAnswerBtn').classList.remove('hidden');
-          document.getElementById('importAnswerFile').classList.remove('hidden');
-        } else if (type === 'answer') {
-          document.getElementById('genAnswer').classList.add('hidden');
-          document.getElementById('importOfferBtn').classList.add('hidden');
-          document.getElementById('importAnswerBtn').classList.add('hidden');
-        }
+      if (e.candidate) return;
+      const { type, sdp } = pc.localDescription;
+      downloadChat({ type, sdp });
+      if (type === 'offer') {
+        document.getElementById('genOffer').classList.add('hidden');
+        document.getElementById('importAnswerBtn').classList.remove('hidden');
+      } else {
+        document.getElementById('genAnswer').classList.add('hidden');
       }
     };
 
     // Import Offer
-    document.getElementById('importOfferBtn').onclick = () => document.getElementById('importOfferFile').click();
-    document.getElementById('importOfferFile').onchange = async e => {
-      const file = e.target.files[0];
-      const data = JSON.parse(await file.text());
+    document.getElementById('importOfferBtn').onclick = () => importOfferFile.click();
+    importOfferFile.onchange = async e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      importOfferFile.value = '';
+      let data;
+      try { data = JSON.parse(await file.text()); } catch { alert('Invalid file'); return; }
       if (data.type === 'offer') {
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
         document.getElementById('importOfferBtn').classList.add('hidden');
         document.getElementById('genAnswer').classList.remove('hidden');
-        document.getElementById('importOfferFile').classList.add('hidden');
       }
     };
 
     // Import Answer
-    document.getElementById('importAnswerBtn').onclick = () => document.getElementById('importAnswerFile').click();
-    document.getElementById('importAnswerFile').onchange = async e => {
-      const file = e.target.files[0];
-      const data = JSON.parse(await file.text());
+    document.getElementById('importAnswerBtn').onclick = () => importAnswerFile.click();
+    importAnswerFile.onchange = async e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      importAnswerFile.value = '';
+      let data;
+      try { data = JSON.parse(await file.text()); } catch { alert('Invalid file'); return; }
       if (data.type === 'answer') {
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
         document.getElementById('importAnswerBtn').classList.add('hidden');
