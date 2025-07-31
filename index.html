@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P WhatsApp-style Chat</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+    header { background: #075e54; color: white; padding: 10px; text-align: center; font-size: 1.2rem; }
+    #chat { flex: 1; padding: 10px; overflow-y: auto; background: #ece5dd; }
+    .message { margin: 5px 0; max-width: 60%; padding: 8px 12px; border-radius: 7.5px; clear: both; }
+    .self { background: #dcf8c6; float: right; }
+    .peer { background: white; float: left; }
+    #inputArea { display: flex; padding: 10px; background: #f0f0f0; }
+    #msgInput { flex: 1; padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+    #sendBtn { margin-left: 5px; padding: 8px 12px; border: none; border-radius: 5px; background: #25d366; color: white; cursor: pointer; }
+    #controls { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px; background: #fafafa; border-top: 1px solid #ddd; }
+    .btn { padding: 6px 10px; border: none; border-radius: 5px; background: #128c7e; color: white; cursor: pointer; font-size: 0.9rem; }
+    .hidden { display: none; }
+    input[type=file] { display: none; }
+  </style>
+</head>
+<body>
+  <header>P2P Chat</header>
+  <div id="chat"></div>
+  <div id="inputArea">
+    <input id="msgInput" type="text" placeholder="Type a message" />
+    <button id="sendBtn">Send</button>
+  </div>
+  <div id="controls">
+    <button class="btn" id="genOffer">Generate Offer (.chat)</button>
+    <button class="btn" id="importOfferBtn">Import Offer (.chat)</button>
+    <button class="btn hidden" id="genAnswer">Generate Answer (.chat)</button>
+    <button class="btn hidden" id="importAnswerBtn">Import Answer (.chat)</button>
+    <input type="file" id="importOfferFile" accept=".chat" />
+    <input type="file" id="importAnswerFile" accept=".chat" />
+  </div>
+
+  <script>
+    let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    let dc;
+    const chatDiv = document.getElementById('chat');
+    const input = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    function appendMessage(text, self=false) {
+      const msg = document.createElement('div');
+      msg.className = 'message ' + (self ? 'self' : 'peer');
+      msg.textContent = text;
+      chatDiv.appendChild(msg);
+      chatDiv.scrollTop = chatDiv.scrollHeight;
+    }
+
+    sendBtn.onclick = () => {
+      const text = input.value.trim();
+      if (!text || !dc || dc.readyState !== 'open') return;
+      dc.send(text);
+      appendMessage(text, true);
+      input.value = '';
+    };
+
+    pc.ondatachannel = e => {
+      dc = e.channel;
+      setupDataChannel();
+    };
+
+    function setupDataChannel() {
+      dc.onopen = () => appendMessage('Connection established', false);
+      dc.onmessage = e => appendMessage(e.data, false);
+    }
+
+    // Generate Offer
+    document.getElementById('genOffer').onclick = async () => {
+      dc = pc.createDataChannel('chat');
+      setupDataChannel();
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+    };
+
+    // Generate Answer
+    document.getElementById('genAnswer').onclick = async () => {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+    };
+
+    // Handle ICE completion for both offer and answer
+    pc.onicecandidate = e => {
+      if (e.candidate === null) {
+        const desc = pc.localDescription;
+        const type = desc.type;
+        downloadChat({ type, sdp: desc.sdp });
+        if (type === 'offer') {
+          document.getElementById('genOffer').classList.add('hidden');
+          document.getElementById('importAnswerBtn').classList.remove('hidden');
+          document.getElementById('importAnswerFile').classList.remove('hidden');
+        } else if (type === 'answer') {
+          document.getElementById('genAnswer').classList.add('hidden');
+          document.getElementById('importOfferBtn').classList.add('hidden');
+          document.getElementById('importAnswerBtn').classList.add('hidden');
+        }
+      }
+    };
+
+    // Import Offer
+    document.getElementById('importOfferBtn').onclick = () => document.getElementById('importOfferFile').click();
+    document.getElementById('importOfferFile').onchange = async e => {
+      const file = e.target.files[0];
+      const data = JSON.parse(await file.text());
+      if (data.type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
+        document.getElementById('importOfferBtn').classList.add('hidden');
+        document.getElementById('genAnswer').classList.remove('hidden');
+        document.getElementById('importOfferFile').classList.add('hidden');
+      }
+    };
+
+    // Import Answer
+    document.getElementById('importAnswerBtn').onclick = () => document.getElementById('importAnswerFile').click();
+    document.getElementById('importAnswerFile').onchange = async e => {
+      const file = e.target.files[0];
+      const data = JSON.parse(await file.text());
+      if (data.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
+        document.getElementById('importAnswerBtn').classList.add('hidden');
+      }
+    };
+
+    function downloadChat(obj) {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'peer.chat';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
